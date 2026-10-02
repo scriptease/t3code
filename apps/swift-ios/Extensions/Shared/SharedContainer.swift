@@ -2,7 +2,7 @@ import Foundation
 
 enum T3SharedContainer {
     #if DEBUG
-    static let appGroupID = "group.com.t3tools.t3code.swiftui.debug"
+    static let appGroupID = "group.com.caperwhite.florian.t3code"
     static let urlScheme = "t3code-swiftui-dev"
     #else
     static let appGroupID = "group.com.t3tools.t3code.swiftui"
