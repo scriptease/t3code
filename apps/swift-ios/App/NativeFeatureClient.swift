@@ -3813,10 +3813,10 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         sourceControlMonitors.removeValue(forKey: key)
     }
 
-    /// Selections live on this device only, keyed by the environment-scoped thread ID.
-    private var gitRepositorySelections: [String: String] {
+    /// Selections live on this device only, keyed by the environment-scoped thread ID. Loaded
+    /// once because thread mapping reads them on every publish.
+    private lazy var gitRepositorySelections: [String: String] =
         settingsStore.dictionary(forKey: Self.gitRepositoriesKey) as? [String: String] ?? [:]
-    }
 
     /// Branches and worktrees belong to the thread on the server, which never sees the selection.
     private static let nestedRepositoryWorkspaceError = RPCError.remote(
@@ -3836,9 +3836,13 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
     }
 
     func setGitRepository(threadID: String, path: String?) {
-        var selections = gitRepositorySelections
-        selections[threadID] = path
-        settingsStore.set(selections, forKey: Self.gitRepositoriesKey)
+        gitRepositorySelections[threadID] = path
+        settingsStore.set(gitRepositorySelections, forKey: Self.gitRepositoriesKey)
+        if var snapshot = latestSnapshot,
+           let index = snapshot.threads.firstIndex(where: { $0.id == threadID }) {
+            snapshot.threads[index].gitRepositoryPath = path
+            publish(snapshot)
+        }
     }
 
     func gitRepositoryCandidates(threadID: String) async throws -> [String] {
@@ -6838,7 +6842,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         let backgroundLiveness = thread.backgroundLiveness
         let backgroundWorkIsActive = backgroundLiveness == .working
         let capabilities = threadCapabilities(for: environment)
-        return applyingSubagentRequests(FeatureThread(
+        var mapped = FeatureThread(
             id: FeatureScopedID.thread(environmentID: environment.id, wireID: thread.id),
             wireID: thread.id,
             relationshipToParent: thread.relationshipToParent,
@@ -6924,7 +6928,9 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
             runtimeMode: mapRuntimeMode(thread.runtimeMode),
             interactionMode: mapInteractionMode(thread.interactionMode),
             goal: thread.v2Lifecycle?.goal
-        ), environmentID: environment.id)
+        )
+        mapped.gitRepositoryPath = gitRepositorySelections[mapped.id]
+        return applyingSubagentRequests(mapped, environmentID: environment.id)
     }
 
     private func mapThread(
@@ -6958,7 +6964,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         let capabilities = threadCapabilities(for: environment)
         // mapDetail applies shell authority only after comparing snapshot sequences.
         let lifecycle = controlLifecycle ?? shell?.v2Lifecycle
-        return applyingSubagentRequests(FeatureThread(
+        var mapped = FeatureThread(
             id: FeatureScopedID.thread(environmentID: environment.id, wireID: thread.id),
             wireID: thread.id,
             relationshipToParent: thread.relationshipToParent,
@@ -7053,7 +7059,9 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
             runtimeMode: mapRuntimeMode(thread.runtimeMode),
             interactionMode: mapInteractionMode(thread.interactionMode),
             goal: lifecycle?.goal
-        ), environmentID: environment.id)
+        )
+        mapped.gitRepositoryPath = gitRepositorySelections[mapped.id]
+        return applyingSubagentRequests(mapped, environmentID: environment.id)
     }
 
     private func mapDetail(

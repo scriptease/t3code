@@ -1843,7 +1843,7 @@ public final class FeatureRootModel {
             .first
             .map(String.init)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let thread = FeatureThread(
+        var thread = FeatureThread(
             id: submission.threadID,
             wireID: submission.identity.threadID,
             projectID: project.id,
@@ -1862,6 +1862,9 @@ public final class FeatureRootModel {
             runtimeMode: submission.runtimeMode,
             interactionMode: submission.interactionMode
         )
+        if creation.workspaceMode == .local {
+            thread.gitRepositoryPath = creation.repositoryPath
+        }
         pendingThreadsByID[thread.id] = thread
         upsert(thread)
         store(FeatureThreadDetail(
