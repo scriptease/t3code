@@ -10,20 +10,27 @@ struct FeatureGitRepositoryPicker: View {
 
     @State private var repositories: [String]?
     @State private var errorMessage: String?
+    @State private var query = ""
 
     var body: some View {
         Group {
-            if let repositories {
+            if repositories != nil {
                 List {
-                    Section {
-                        row(nil)
+                    if trimmedQuery.isEmpty {
+                        Section {
+                            row(nil)
+                        }
                     }
                     Section("Nested repositories") {
-                        if repositories.isEmpty {
-                            Text("No Git repositories within two folder levels.")
-                                .foregroundStyle(T3Colors.textSecondary)
+                        if filteredRepositories.isEmpty {
+                            Text(
+                                trimmedQuery.isEmpty
+                                    ? "No Git repositories within two folder levels."
+                                    : "No matching repositories"
+                            )
+                            .foregroundStyle(T3Colors.textSecondary)
                         }
-                        ForEach(repositories, id: \.self) { row($0) }
+                        ForEach(filteredRepositories, id: \.self) { row($0) }
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -45,6 +52,7 @@ struct FeatureGitRepositoryPicker: View {
         .background(T3Colors.background)
         .navigationTitle("Repository")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Search repositories")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
@@ -73,6 +81,16 @@ struct FeatureGitRepositoryPicker: View {
         }
         .accessibilityAddTraits(path == selection ? .isSelected : [])
         .accessibilityIdentifier("git-repository-\(path ?? "project-folder")")
+    }
+
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredRepositories: [String] {
+        let repositories = repositories ?? []
+        guard !trimmedQuery.isEmpty else { return repositories }
+        return repositories.filter { $0.localizedCaseInsensitiveContains(trimmedQuery) }
     }
 
     private func reload() async {
