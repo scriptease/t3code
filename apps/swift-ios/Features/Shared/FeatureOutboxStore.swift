@@ -137,6 +137,7 @@ public struct FeatureQueuedCreation: Sendable, Equatable, Codable {
     public var worktreePath: String?
     public var startFromOrigin: Bool
     public var pullRequestReference: String?
+    public var repositoryPath: String?
 
     public init(
         projectID: String,
@@ -146,7 +147,8 @@ public struct FeatureQueuedCreation: Sendable, Equatable, Codable {
         worktreePath: String?,
         startFromOrigin: Bool,
         draftKey: String? = nil,
-        pullRequestReference: String? = nil
+        pullRequestReference: String? = nil,
+        repositoryPath: String? = nil
     ) {
         self.projectID = projectID
         self.projectName = projectName
@@ -156,6 +158,7 @@ public struct FeatureQueuedCreation: Sendable, Equatable, Codable {
         self.worktreePath = worktreePath
         self.startFromOrigin = startFromOrigin
         self.pullRequestReference = workspaceMode == .worktree ? pullRequestReference : nil
+        self.repositoryPath = repositoryPath
     }
 }
 

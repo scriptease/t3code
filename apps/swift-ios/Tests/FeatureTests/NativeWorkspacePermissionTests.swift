@@ -103,7 +103,7 @@ struct NativeWorkspacePermissionTests {
                 projectID: project.id, prompt: "Review this PR",
                 selection: .init(providerID: "codex", modelID: "fixture-model"),
                 runtimeMode: .fullAccess, interactionMode: .standard,
-                workspaceMode: .worktree, branch: "main", worktreePath: nil,
+                workspaceMode: .worktree, branch: "main", worktreePath: nil, repositoryPath: nil,
                 startFromOrigin: false, attachments: [], identity: .init(), context: nil,
                 pullRequestReference: "https://github.com/example/repo/pull/1"
             )
@@ -123,7 +123,7 @@ struct NativeWorkspacePermissionTests {
                 projectID: project.id, prompt: "Review this PR",
                 selection: .init(providerID: "codex", modelID: "fixture-model"),
                 runtimeMode: .fullAccess, interactionMode: .standard,
-                workspaceMode: .worktree, branch: "main", worktreePath: nil,
+                workspaceMode: .worktree, branch: "main", worktreePath: nil, repositoryPath: nil,
                 startFromOrigin: false, attachments: [], identity: .init(), context: nil,
                 pullRequestReference: "https://github.com/example/repo/pull/1"
             )

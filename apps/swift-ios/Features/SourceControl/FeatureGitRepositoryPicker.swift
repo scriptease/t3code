@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// Lists the Git repositories nested below a thread's project folder. Picking one, or the
-/// project folder itself (`nil`), reports it through `onSelect` and dismisses.
+/// Lists the Git repositories nested below a project folder, as returned by `load`. Picking
+/// one, or the project folder itself (`nil`), reports it through `onSelect` and dismisses.
 struct FeatureGitRepositoryPicker: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let client: any FeatureClient
-    let threadID: String
     let selection: String?
+    let load: () async throws -> [String]
     let onSelect: (String?) -> Void
 
     @State private var repositories: [String]?
@@ -29,14 +28,14 @@ struct FeatureGitRepositoryPicker: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
-                .refreshable { await load() }
+                .refreshable { await reload() }
             } else if let errorMessage {
                 ContentUnavailableView {
                     Label("Repositories unavailable", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Retry") { Task { await load() } }
+                    Button("Retry") { Task { await reload() } }
                 }
             } else {
                 ProgressView("Searching for repositories…")
@@ -51,7 +50,7 @@ struct FeatureGitRepositoryPicker: View {
                 Button("Cancel") { dismiss() }
             }
         }
-        .task { await load() }
+        .task { await reload() }
     }
 
     private func row(_ path: String?) -> some View {
@@ -76,10 +75,10 @@ struct FeatureGitRepositoryPicker: View {
         .accessibilityIdentifier("git-repository-\(path ?? "project-folder")")
     }
 
-    private func load() async {
+    private func reload() async {
         errorMessage = nil
         do {
-            repositories = try await client.gitRepositoryCandidates(threadID: threadID)
+            repositories = try await load()
         } catch is CancellationError {
             return
         } catch {

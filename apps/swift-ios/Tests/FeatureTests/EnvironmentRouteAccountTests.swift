@@ -140,7 +140,7 @@ private final class AccountChangeFeatureClient: FeatureClient, FeatureEnvironmen
     func createThreadAndSend(
         projectID: String, prompt: String, selection: FeatureSelection?, runtimeMode: FeatureRuntimeMode,
         interactionMode: FeatureInteractionMode, workspaceMode: FeatureWorkspaceMode,
-        branch: String?, worktreePath: String?, startFromOrigin: Bool,
+        branch: String?, worktreePath: String?, repositoryPath: String?, startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment], identity: FeatureSubmissionIdentity,
         context: OrchestrationMessageContext?
     ) async throws -> FeatureThread { throw FeatureCapabilityUnavailable("Messages") }

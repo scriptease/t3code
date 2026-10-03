@@ -439,6 +439,10 @@ public final class FeatureRootModel {
             environmentID: project.environmentID,
             wireID: identity.threadID
         )
+        // A worktree thread already works inside its own checkout of the repository.
+        if let repositoryPath = request.repositoryPath, request.workspaceMode == .local {
+            client.setGitRepository(threadID: threadID, path: repositoryPath)
+        }
         let uploads = request.attachments.map(\.upload)
         let queued = FeatureQueuedSubmission(
             environmentID: project.environmentID,
@@ -457,7 +461,8 @@ public final class FeatureRootModel {
                 worktreePath: request.worktreePath,
                 startFromOrigin: request.startFromOrigin,
                 draftKey: FeatureComposerDraftStore.newTaskKey(project: project, in: snapshot),
-                pullRequestReference: request.pullRequestReference
+                pullRequestReference: request.pullRequestReference,
+                repositoryPath: request.repositoryPath
             ),
             context: request.context
         )
@@ -476,6 +481,7 @@ public final class FeatureRootModel {
                 workspaceMode: request.workspaceMode,
                 branch: request.branch,
                 worktreePath: request.worktreePath,
+                repositoryPath: request.repositoryPath,
                 startFromOrigin: request.startFromOrigin,
                 attachments: uploads,
                 identity: identity,
@@ -512,9 +518,14 @@ public final class FeatureRootModel {
 
     public func workspaceBranches(
         projectID: String,
+        repositoryPath: String? = nil,
         refresh: Bool = false
     ) async throws -> [FeatureWorkspaceBranch] {
-        try await client.listWorkspaceBranches(projectID: projectID, refresh: refresh)
+        try await client.listWorkspaceBranches(
+            projectID: projectID,
+            repositoryPath: repositoryPath,
+            refresh: refresh
+        )
     }
 
     public func renameThread(_ id: String, title: String) async {
@@ -2229,6 +2240,7 @@ public final class FeatureRootModel {
                             workspaceMode: creation.workspaceMode,
                             branch: creation.branch,
                             worktreePath: creation.worktreePath,
+                            repositoryPath: creation.repositoryPath,
                             startFromOrigin: creation.startFromOrigin,
                             attachments: uploads,
                             identity: submission.identity,

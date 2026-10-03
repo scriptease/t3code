@@ -3930,6 +3930,7 @@ private class FeatureClientStub: FeatureClient, T3ConnectCapable {
         workspaceMode: FeatureWorkspaceMode,
         branch: String?,
         worktreePath: String?,
+        repositoryPath: String?,
         startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment],
         identity: FeatureSubmissionIdentity,
