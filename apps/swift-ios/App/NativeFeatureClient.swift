@@ -33,6 +33,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
     private let hasMatchingT3ConnectController: Bool
     private let settingsStore: UserDefaults
     private static let gitHubRoutingKey = "swift-ios.github-routing.v1"
+    private static let gitRepositoriesKey = "swift-ios.git-repositories.v1"
     private var routedPullRequests: [FeaturePullRequestTarget: Set<String>] = [:]
     private var cachedSettings: FeatureSettings?
     private let clientReadCache: ClientReadCache
@@ -3544,12 +3545,13 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         switch target {
         case .gitSource(let sourceID):
             try await requireWorkspaceScopes(["filesystem:read"], client: route.client, generation: generation)
-            let preview = try await route.client.reviewDiffPreview(cwd: context.cwd)
+            let preview = try await route.client.reviewDiffPreview(cwd: context.gitCwd)
             guard preview.sources.contains(where: { $0.id == sourceID }) else {
                 throw RPCError.remote("This review source is no longer available. Reload changes.")
             }
             var review = NativeWorkspaceMapper.review(preview, sourceID: sourceID)
             review.sources = nil
+            review.repositoryPath = selectedGitRepository(route: route, context: context)
             return review
         case .turn(let checkpointID, let from, let to):
             let diff = try await route.client.reviewCheckpointDiff(threadID: route.wireID, fromTurnCount: from, toTurnCount: to)
@@ -3563,10 +3565,11 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
             return review
         case nil:
             try await requireWorkspaceScopes(["filesystem:read"], client: route.client, generation: generation)
-            let preview = try await route.client.reviewDiffPreview(cwd: context.cwd)
+            let preview = try await route.client.reviewDiffPreview(cwd: context.gitCwd)
             // A bounded chat page can omit earlier checkpoints. Read once when
             // opening or refreshing review, not whenever the source changes.
             var review = NativeWorkspaceMapper.review(preview)
+            review.repositoryPath = selectedGitRepository(route: route, context: context)
             do {
                 let snapshot = try await route.client.fullThreadSnapshot(id: route.wireID)
                 review.sources = (review.sources ?? []) + NativeReviewSources.checkpoints(snapshot.thread)
@@ -3598,7 +3601,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         }
         try await requireWorkspaceScopes(["filesystem:read"], client: route.client, generation: generation)
         let contents = try await route.client.reviewDiffFileContents(
-            cwd: context.cwd,
+            cwd: context.gitCwd,
             sourceKind: sourceKind,
             changeType: changeType,
             baseRef: file.sourceBaseReference,
@@ -3616,7 +3619,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         let route = try threadRoute(for: threadID)
         let context = try workspaceContext(route: route)
         return NativeWorkspaceMapper.sourceControl(
-            try await route.client.refreshVCSStatus(cwd: context.cwd)
+            try await route.client.refreshVCSStatus(cwd: context.gitCwd)
         )
     }
 
@@ -3628,7 +3631,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         let client = route.client
         let environmentID = route.environmentID
         let generation = environmentGeneration
-        let events = await client.vcsStatusEvents(cwd: context.cwd)
+        let events = await client.vcsStatusEvents(cwd: context.gitCwd)
         // Each element is a whole status, so only the newest one is ever useful.
         let (statuses, continuation) = AsyncThrowingStream.makeStream(
             of: FeatureSourceControlStatus.self,
@@ -3716,7 +3719,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
 
         let key = NativeSourceControlMonitorKey(
             environmentID: route.environmentID,
-            workingDirectory: context.cwd,
+            workingDirectory: context.gitCwd,
             intent: intent
         )
         let subscriberID = UUID()
@@ -3797,6 +3800,45 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         sourceControlMonitors.removeValue(forKey: key)
     }
 
+    /// Selections live on this device only, keyed by the environment-scoped thread ID.
+    private var gitRepositorySelections: [String: String] {
+        settingsStore.dictionary(forKey: Self.gitRepositoriesKey) as? [String: String] ?? [:]
+    }
+
+    /// Branches and worktrees belong to the thread on the server, which never sees the selection.
+    private static let nestedRepositoryWorkspaceError = RPCError.remote(
+        "Branches and worktrees apply to the project folder. Clear the repository selection to change them."
+    )
+
+    /// The selected nested repository, unless the thread runs in a worktree.
+    private func selectedGitRepository(
+        route: NativeThreadRoute,
+        context: (cwd: String, worktreePath: String?, gitCwd: String)
+    ) -> String? {
+        context.worktreePath == nil ? gitRepositorySelections[route.uiID] : nil
+    }
+
+    func gitRepository(threadID: String) -> String? {
+        guard let route = try? threadRoute(for: threadID) else { return nil }
+        return gitRepositorySelections[route.uiID]
+    }
+
+    func setGitRepository(threadID: String, path: String?) {
+        guard let route = try? threadRoute(for: threadID) else { return }
+        var selections = gitRepositorySelections
+        selections[route.uiID] = path
+        settingsStore.set(selections, forKey: Self.gitRepositoriesKey)
+    }
+
+    func gitRepositoryCandidates(threadID: String) async throws -> [String] {
+        let route = try threadRoute(for: threadID)
+        let context = try workspaceContext(route: route)
+        let client = route.client
+        return try await NativeGitRepositoryScanner.scan(root: context.cwd) { path in
+            try await client.browseFilesystem(partialPath: path).entries
+        }
+    }
+
     func performSourceControlAction(
         threadID: String, action: FeatureSourceControlAction, message: String?
     ) async throws {
@@ -3817,7 +3859,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         try await requireMutationPermissions(featureBranch: request.featureBranch)
         guard request.filePaths?.isEmpty != true else { throw RPCError.remote("Select at least one file to commit.") }
         guard (request.message?.utf16.count ?? 0) <= 10_000 else { throw RPCError.remote("Commit messages must be at most 10,000 characters.") }
-        let status = NativeWorkspaceMapper.sourceControl(try await route.client.refreshVCSStatus(cwd: context.cwd))
+        let status = NativeWorkspaceMapper.sourceControl(try await route.client.refreshVCSStatus(cwd: context.gitCwd))
         guard status.isRepository else { throw RPCError.remote("This workspace is not a Git repository.") }
         if request.requiresBranchChoice(status) {
             throw FeatureSourceControlBranchChoiceRequired(branch: status.branch ?? "default branch")
@@ -3827,16 +3869,19 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         }
         if request.action == .pull {
             try await requireMutationPermissions(featureBranch: request.featureBranch)
-            _ = try await route.client.pull(cwd: context.cwd)
+            _ = try await route.client.pull(cwd: context.gitCwd)
             return
         }
 
         var effective = request
+        if request.featureBranch, context.gitCwd != context.cwd {
+            throw Self.nestedRepositoryWorkspaceError
+        }
         if request.featureBranch, !request.action.includesCommit {
             let branches = try await sourceControlBranches(threadID: threadID)
             let name = FeatureGitBranchName.automatic(existing: branches.branches.map(\.name))
             try await requireMutationPermissions(featureBranch: true)
-            let created = try await route.client.createVCSRef(cwd: context.cwd, name: name)
+            let created = try await route.client.createVCSRef(cwd: context.gitCwd, name: name)
             effective.featureBranch = false
             let workspace = FeatureSourceControlWorkspace(branch: created.refName, worktreePath: context.worktreePath)
             do {
@@ -3850,13 +3895,13 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
             let actionID = UUID().uuidString
             try await requireMutationPermissions(featureBranch: effective.featureBranch)
             let progress = try await route.client.runGitAction(
-                cwd: context.cwd, action: NativeWorkspaceMapper.gitAction(effective.action),
+                cwd: context.gitCwd, action: NativeWorkspaceMapper.gitAction(effective.action),
                 commitMessage: effective.message, featureBranch: effective.featureBranch ? true : nil,
                 filePaths: effective.filePaths, threadID: route.wireID, actionID: actionID
             )
             var completed: GitActionResult?
             for try await event in progress {
-                guard event.actionId == actionID, event.cwd == context.cwd else { continue }
+                guard event.actionId == actionID, event.cwd == context.gitCwd else { continue }
                 if event.kind == "action_failed" {
                     throw RPCError.remote(event.message ?? "The source-control action failed.")
                 }
@@ -3885,6 +3930,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
     func sourceControlBranches(threadID: String) async throws -> FeatureSourceControlBranches {
         let route = try threadRoute(for: threadID)
         let context = try workspaceContext(route: route)
+        guard context.gitCwd == context.cwd else { throw Self.nestedRepositoryWorkspaceError }
         guard let shell = shellsByEnvironmentID[route.environmentID],
               let thread = shell.threads.first(where: { $0.id == route.wireID }),
               let project = shell.projects.first(where: { $0.id == thread.projectId }) else {
@@ -3911,6 +3957,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         let route = try threadRoute(for: threadID)
         let generation = environmentGeneration
         let context = try workspaceContext(route: route)
+        guard context.gitCwd == context.cwd else { throw Self.nestedRepositoryWorkspaceError }
         func requireMutationPermissions() async throws {
             try await requireWorkspaceScopes(
                 ["source-control:write", "orchestration:operate"], client: route.client, generation: generation
@@ -4601,9 +4648,12 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         publish(detail, threadID: threadID)
     }
 
+    /// `cwd` is where the agent works; `gitCwd` is the repository that review and source
+    /// control target, which differs when the thread selected a nested repository.
     private func workspaceContext(route: NativeThreadRoute) throws -> (
         cwd: String,
-        worktreePath: String?
+        worktreePath: String?,
+        gitCwd: String
     ) {
         let detailThread = latestDetails[route.uiID]?.thread
         guard let shell = shellsByEnvironmentID[route.environmentID] else {
@@ -4618,7 +4668,14 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         // Detail is the active thread's freshest workspace. Shells can lag a
         // branch/worktree change while files, Git and terminal open together.
         let worktreePath = detailThread?.worktreePath ?? thread?.worktreePath
-        return (cwd: worktreePath ?? project.workspaceRoot, worktreePath: worktreePath)
+        let repository = gitRepositorySelections[route.uiID].map {
+            NativeWorkspaceMapper.joinedPath(project.workspaceRoot, $0)
+        }
+        return (
+            cwd: worktreePath ?? project.workspaceRoot,
+            worktreePath: worktreePath,
+            gitCwd: worktreePath ?? repository ?? project.workspaceRoot
+        )
     }
 
     private func consumeTerminalEvent(
