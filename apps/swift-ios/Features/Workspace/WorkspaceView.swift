@@ -1245,6 +1245,12 @@ struct HomeThreadRowContext: Equatable {
     let providerName: String
     let connectionState: FeatureConnection.State?
     var providerBadge: ProviderAccountBadge? = nil
+    var repositoryPath: String? = nil
+
+    /// The project, followed by the nested repository the thread targets, if any.
+    var projectLabel: String {
+        repositoryPath.map { "\(projectName) / \($0)" } ?? projectName
+    }
 
     static let fallback = HomeThreadRowContext(
         projectName: "Project",
@@ -1345,7 +1351,8 @@ struct HomeThreadRowContext: Equatable {
                 providerDriver: providerDriver,
                 providerName: providerName,
                 connectionState: connectionState,
-                providerBadge: environmentID.flatMap { badgesByEnvironment[$0]?[providerID] }
+                providerBadge: environmentID.flatMap { badgesByEnvironment[$0]?[providerID] },
+                repositoryPath: thread.gitRepositoryPath
             )
         }
     }
@@ -1519,7 +1526,7 @@ struct FeatureThreadRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 projectBadge
-                Text(context.projectName)
+                Text(context.projectLabel)
                     .lineLimit(1)
                     .foregroundStyle(T3Colors.textSecondary)
                 Spacer(minLength: 8)
@@ -1818,7 +1825,7 @@ struct FeatureThreadRow: View {
 
     private func accessibilityValue(at now: Date) -> String {
         let status = thread.homeRowAccessibilityStatus(rich: style == .rich, at: now)
-        var values = [status, "Project \(context.projectName)"]
+        var values = [status, "Project \(context.projectLabel)"]
         values.append("Harness \(context.providerName)")
         if let duration = thread.homeWorkingDuration(at: now) {
             values.append("for \(duration)")

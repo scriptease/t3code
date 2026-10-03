@@ -287,6 +287,8 @@ public struct FeatureThread: Identifiable, Sendable, Equatable, Hashable, Codabl
     public var preview: String?
     public var branch: String?
     public var worktreePath: String?
+    /// A repository nested below the project folder that this device targets for git work.
+    public var gitRepositoryPath: String? = nil
     public var linkedPullRequest: ThreadLinkedPullRequest?
     public var pullRequests: [ThreadPullRequestLink]?
     public var branchPullRequest: ThreadLinkedPullRequest?

@@ -512,7 +512,7 @@ struct HomeThreadCollectionView: UIViewRepresentable {
             if let duration = thread.homeWorkingDuration(at: .now) {
                 status += " for \(duration)"
             }
-            var values = [status, "Project \(context.projectName)"]
+            var values = [status, "Project \(context.projectLabel)"]
             if let snippet = context.searchSnippet, !snippet.isEmpty {
                 values.append(snippet)
             }

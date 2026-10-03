@@ -58,6 +58,7 @@ public struct ThreadDetailView: View {
     @State private var toolSurface: FeatureThreadToolSurface?
     @State private var pendingWorkspaceAction: (@MainActor () -> Void)?
     @State private var rootNavigationDismissal = FeatureRootNavigationDismissal()
+    @State private var detailWidth: CGFloat = 0
     @State private var branchPullRequest: FeaturePullRequest?
     @State private var showsLinkPullRequest = false
     @State private var pullRequestURL = ""
@@ -432,6 +433,7 @@ public struct ThreadDetailView: View {
                 }
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
         .background(T3Colors.background)
         .alert("Link pull request", isPresented: $showsLinkPullRequest) {
             TextField("Pull request URL", text: $pullRequestURL)
@@ -700,6 +702,14 @@ public struct ThreadDetailView: View {
             HStack(spacing: 5) {
                 HStack(spacing: 5) {
                     Image(systemName: "arrow.triangle.branch")
+                    if let repository = currentThread.gitRepositoryPath {
+                        // Capped so a long repository path never pushes the branch out of view.
+                        MaximumWidthLayout(maxWidth: detailWidth > 0 ? detailWidth * 0.3 : .infinity) {
+                            Text(repository)
+                                .lineLimit(1)
+                        }
+                        Text("/")
+                    }
                     Text(headerBranch)
                         .lineLimit(1)
                     if let environmentName = currentThread.homeEnvironmentLabel(in: model.snapshot) {
@@ -4556,5 +4566,31 @@ private struct FeatureLinkedMediaPreview: Identifiable {
         case .text: return .plainText
         case .native: return .document
         }
+    }
+}
+
+/// Offers its content at most `maxWidth` and takes only the width the content uses, so long
+/// text truncates while short text keeps its natural width.
+private struct MaximumWidthLayout: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(capped(proposal.width, height: proposal.height)) ?? .zero
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal _: ProposedViewSize,
+        subviews: Subviews,
+        cache _: inout ()
+    ) {
+        subviews.first?.place(
+            at: bounds.origin,
+            proposal: capped(bounds.width, height: bounds.height)
+        )
+    }
+
+    private func capped(_ width: CGFloat?, height: CGFloat?) -> ProposedViewSize {
+        ProposedViewSize(width: min(width ?? .infinity, maxWidth), height: height)
     }
 }
