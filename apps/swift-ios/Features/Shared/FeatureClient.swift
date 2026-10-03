@@ -227,6 +227,12 @@ public protocol FeatureClient: AnyObject {
         action: FeatureSourceControlAction,
         message: String?
     ) async throws
+    /// The nested repository, relative to the project folder, that review and source control
+    /// target instead of the project folder itself. `nil` targets the project folder.
+    func gitRepository(threadID: String) -> String?
+    func setGitRepository(threadID: String, path: String?)
+    /// Repositories nested below the project folder, for when it is not one itself.
+    func gitRepositoryCandidates(threadID: String) async throws -> [String]
 
     func performSourceControlAction(threadID: String, request: FeatureSourceControlRequest) async throws
     func sourceControlBranches(threadID: String) async throws -> FeatureSourceControlBranches
@@ -576,6 +582,14 @@ public extension FeatureClient {
 
     func syncSourceControlWorkspace(threadID: String, workspace: FeatureSourceControlWorkspace) async throws {
         throw FeatureCapabilityUnavailable("Thread workspace updates")
+    }
+
+    func gitRepository(threadID _: String) -> String? { nil }
+
+    func setGitRepository(threadID _: String, path _: String?) {}
+
+    func gitRepositoryCandidates(threadID _: String) async throws -> [String] {
+        throw FeatureCapabilityUnavailable("Repository selection")
     }
 
     func terminalSnapshot(threadID: String, terminalID _: String) async throws -> FeatureTerminalSnapshot {

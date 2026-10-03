@@ -46,12 +46,15 @@ public struct FeatureSourceControlView: View {
     @State private var showsBranches = false
     @State private var handledDestination: FeatureThreadDestination?
     @State private var pendingCommitAction: FeatureSourceControlAction?
+    @State private var repository: String?
+    @State private var isPickingRepository = false
     @AccessibilityFocusState private var recoveryFocus: FeatureToolRecoveryFocus?
 
     public init(client: any FeatureClient, threadID: String, initialDestination: FeatureThreadDestination? = nil) {
         self.client = client
         self.threadID = threadID
         self.initialDestination = initialDestination
+        _repository = State(initialValue: client.gitRepository(threadID: threadID))
     }
 
     public var body: some View {
@@ -66,15 +69,17 @@ public struct FeatureSourceControlView: View {
                 } else if let status, status.isRepository {
                     statusList(status)
                 } else {
-                    ContentUnavailableView(
-                        "Source control unavailable",
-                        systemImage: "arrow.triangle.branch",
-                        description: Text(
-                            status?.isRepository == false
-                                ? "This workspace is not a Git repository."
-                                : "Repository status could not be loaded."
-                        )
-                    )
+                    ContentUnavailableView {
+                        Label("Source control unavailable", systemImage: "arrow.triangle.branch")
+                    } description: {
+                        Text(unavailableDescription)
+                    } actions: {
+                        if status?.isRepository == false {
+                            Button("Select repository") { isPickingRepository = true }
+                                .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("source-control-select-repository")
+                        }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,6 +163,33 @@ public struct FeatureSourceControlView: View {
             openCommitDestinationIfNeeded()
             await load()
         }
+        .sheet(isPresented: $isPickingRepository) {
+            NavigationStack {
+                FeatureGitRepositoryPicker(
+                    client: client,
+                    threadID: threadID,
+                    selection: repository,
+                    onSelect: selectRepository
+                )
+            }
+        }
+    }
+
+    private var unavailableDescription: String {
+        guard status?.isRepository == false else { return "Repository status could not be loaded." }
+        if let repository { return "\(repository) is not a Git repository." }
+        return "This workspace is not a Git repository. Select a repository inside it to use source control."
+    }
+
+    private func selectRepository(_ path: String?) {
+        guard path != repository else { return }
+        client.setGitRepository(threadID: threadID, path: path)
+        status = nil
+        errorMessage = nil
+        recovery = FeatureToolFailureState()
+        isLoading = true
+        repository = path
+        Task { await load() }
     }
 
     /// Keeps the failed output on screen — including while its retry runs — with a labelled
@@ -229,6 +261,17 @@ public struct FeatureSourceControlView: View {
             }
 
             Section("Repository") {
+                if let repository {
+                    Button { isPickingRepository = true } label: {
+                        LabeledContent("Folder") {
+                            Label(repository, systemImage: "chevron.up.chevron.down")
+                                .labelStyle(.titleAndIcon)
+                        }
+                    }
+                    .foregroundStyle(T3Colors.textPrimary)
+                    .disabled(runState.isBusy)
+                    .accessibilityIdentifier("source-control-repository")
+                }
                 LabeledContent("Branch", value: status.branch ?? "Detached HEAD")
                     .accessibilityFocused($recoveryFocus, equals: .recoveredContent)
                 if let upstream = status.upstream {

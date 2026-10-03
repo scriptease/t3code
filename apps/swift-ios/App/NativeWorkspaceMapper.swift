@@ -232,12 +232,24 @@ enum NativeWorkspaceMapper {
     }
 
     static func directoryPath(_ path: String?, workspaceRoot: String) -> String {
-        let isWindows = workspaceRoot.hasPrefix("\\\\") || workspaceRoot.hasPrefix("//")
-            || workspaceRoot.range(of: #"^[A-Za-z]:[/\\]"#, options: .regularExpression) != nil
         let path = path ?? ""
-        return (isWindows ? path.replacingOccurrences(of: "\\", with: "/") : path)
+        return (isWindowsPath(workspaceRoot) ? path.replacingOccurrences(of: "\\", with: "/") : path)
             .split(separator: "/", omittingEmptySubsequences: true)
             .joined(separator: "/")
+    }
+
+    /// Appends a `/`-separated relative path to a workspace root in the root's own separator style.
+    static func joinedPath(_ root: String, _ relativePath: String) -> String {
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: true)
+        guard !components.isEmpty else { return root }
+        let separator = isWindowsPath(root) ? "\\" : "/"
+        let base = root.hasSuffix("/") || root.hasSuffix("\\") ? String(root.dropLast()) : root
+        return ([base] + components.map(String.init)).joined(separator: separator)
+    }
+
+    private static func isWindowsPath(_ path: String) -> Bool {
+        path.hasPrefix("\\\\") || path.hasPrefix("//")
+            || path.range(of: #"^[A-Za-z]:[/\\]"#, options: .regularExpression) != nil
     }
 
     private static func parseDiff(_ source: ReviewDiffSource) -> [FeatureReviewFile] {

@@ -936,6 +936,8 @@ public struct FeatureReview: Sendable, Equatable, Codable {
     public var baseReference: String?
     public var files: [FeatureReviewFile]
     public var isTruncated: Bool
+    /// The selected nested repository the file paths are relative to, if any.
+    public var repositoryPath: String?
 
     public init(
         title: String = "Working tree",
@@ -944,7 +946,8 @@ public struct FeatureReview: Sendable, Equatable, Codable {
         isTruncated: Bool = false,
         sources: [FeatureReviewSource]? = nil,
         selectedSourceID: String? = nil,
-        historyError: String? = nil
+        historyError: String? = nil,
+        repositoryPath: String? = nil
     ) {
         self.historyError = historyError
         self.sources = sources
@@ -953,6 +956,7 @@ public struct FeatureReview: Sendable, Equatable, Codable {
         self.baseReference = baseReference
         self.files = files
         self.isTruncated = isTruncated
+        self.repositoryPath = repositoryPath
     }
 
     public var additions: Int { files.reduce(0) { $0 + $1.additions } }

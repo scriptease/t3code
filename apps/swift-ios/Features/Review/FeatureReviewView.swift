@@ -100,6 +100,11 @@ public struct FeatureReviewView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(review.title)
                             .font(T3Typography.navigationTitle)
+                        if let repositoryPath = review.repositoryPath {
+                            Label(repositoryPath, systemImage: "folder")
+                                .font(T3Typography.tool)
+                                .foregroundStyle(T3Colors.textSecondary)
+                        }
                         if let base = review.baseReference {
                             Text(base)
                                 .font(T3Typography.tool)
@@ -133,6 +138,7 @@ public struct FeatureReviewView: View {
                             client: client,
                             threadID: threadID,
                             file: file,
+                            repositoryPath: review.repositoryPath,
                             onAppendComment: onAppendComment
                         )
                         .id(file.id)
@@ -271,6 +277,7 @@ private struct FeatureDiffView: View {
     let client: any FeatureClient
     let threadID: String
     let file: FeatureReviewFile
+    let repositoryPath: String?
     let onAppendComment: (ComposerContextRecord) async throws -> Void
 
     @State private var hydration: FeatureDiffHydration
@@ -286,11 +293,13 @@ private struct FeatureDiffView: View {
         client: any FeatureClient,
         threadID: String,
         file: FeatureReviewFile,
+        repositoryPath: String?,
         onAppendComment: @escaping (ComposerContextRecord) async throws -> Void
     ) {
         self.client = client
         self.threadID = threadID
         self.file = file
+        self.repositoryPath = repositoryPath
         self.onAppendComment = onAppendComment
         _hydration = State(initialValue: FeatureDiffHydration(lines: file.lines))
     }
@@ -503,8 +512,10 @@ private struct FeatureDiffView: View {
     }
 
     private var reviewDraft: FeatureReviewCommentDraft {
+        // The agent works in the project folder, so point it past the nested repository.
         FeatureReviewCommentDraft(
-            filePath: file.path, line: selectedLine, body: comment,
+            filePath: repositoryPath.map { "\($0)/\(file.path)" } ?? file.path,
+            line: selectedLine, body: comment,
             sourceID: file.sourceID ?? file.sourceKind ?? "working-tree",
             sourceTitle: file.sourceTitle ?? "Working changes"
         )
