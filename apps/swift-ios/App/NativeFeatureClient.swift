@@ -1651,16 +1651,18 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
 
     func listWorkspaceBranches(
         projectID: String,
+        repositoryPath: String?,
         refresh: Bool
     ) async throws -> [FeatureWorkspaceBranch] {
         let route = try projectRoute(for: projectID)
         let project = try project(for: route)
+        let cwd = NativeWorkspaceMapper.joinedPath(project.workspaceRoot, repositoryPath ?? "")
         var refs: [VCSRef] = []
         var cursor: Int?
         var seenCursors = Set<Int>()
         repeat {
             let result = try await route.client.listVCSRefs(
-                cwd: project.workspaceRoot,
+                cwd: cwd,
                 cursor: cursor,
                 refresh: refresh && cursor == nil,
                 limit: 100
@@ -1686,12 +1688,16 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
     }
 
     func selectWorkspaceBranch(
-        projectID: String, branch: FeatureWorkspaceBranch, mode: FeatureWorkspaceMode
+        projectID: String,
+        repositoryPath: String?,
+        branch: FeatureWorkspaceBranch,
+        mode: FeatureWorkspaceMode
     ) async throws -> FeatureWorkspaceBranch {
         let route = try projectRoute(for: projectID)
         let project = try project(for: route)
+        let cwd = NativeWorkspaceMapper.joinedPath(project.workspaceRoot, repositoryPath ?? "")
         return try await NewTaskWorkspaceDefaults.selectBranch(branch, mode: mode) { name in
-            try await route.client.switchVCSRef(cwd: project.workspaceRoot, name: name).refName
+            try await route.client.switchVCSRef(cwd: cwd, name: name).refName
         }
     }
 
@@ -1797,6 +1803,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         workspaceMode: FeatureWorkspaceMode,
         branch: String?,
         worktreePath: String?,
+        repositoryPath: String? = nil,
         startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment],
         identity: FeatureSubmissionIdentity,
@@ -1811,6 +1818,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
             workspaceMode: workspaceMode,
             branch: branch,
             worktreePath: worktreePath,
+            repositoryPath: repositoryPath,
             startFromOrigin: startFromOrigin,
             attachments: attachments,
             submissionIdentity: identity,
@@ -1827,6 +1835,7 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
         workspaceMode: FeatureWorkspaceMode,
         branch: String?,
         worktreePath: String?,
+        repositoryPath: String?,
         startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment],
         submissionIdentity: FeatureSubmissionIdentity?,
@@ -1906,7 +1915,11 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
                 worktreePreparation: pending.worktreeBranchName.flatMap { worktreeBranch in
                     branch.map {
                         ThreadWorktreePreparation(
-                            projectCwd: routedProject.workspaceRoot,
+                            // A nested repository's worktree is cut from that repository.
+                            projectCwd: NativeWorkspaceMapper.joinedPath(
+                                routedProject.workspaceRoot,
+                                repositoryPath ?? ""
+                            ),
                             baseBranch: $0,
                             branch: worktreeBranch,
                             startFromOrigin: startFromOrigin
@@ -3701,22 +3714,33 @@ final class NativeFeatureClient: FeatureClient, FeatureDeviceManaging,
     }
 
     func gitRepository(threadID: String) -> String? {
-        guard let route = try? threadRoute(for: threadID) else { return nil }
-        return gitRepositorySelections[route.uiID]
+        gitRepositorySelections[threadID]
     }
 
     func setGitRepository(threadID: String, path: String?) {
-        guard let route = try? threadRoute(for: threadID) else { return }
         var selections = gitRepositorySelections
-        selections[route.uiID] = path
+        selections[threadID] = path
         settingsStore.set(selections, forKey: Self.gitRepositoriesKey)
     }
 
     func gitRepositoryCandidates(threadID: String) async throws -> [String] {
         let route = try threadRoute(for: threadID)
-        let context = try workspaceContext(route: route)
-        let client = route.client
-        return try await NativeGitRepositoryScanner.scan(root: context.cwd) { path in
+        return try await Self.scanGitRepositories(
+            client: route.client,
+            root: try workspaceContext(route: route).cwd
+        )
+    }
+
+    func gitRepositoryCandidates(projectID: String) async throws -> [String] {
+        let route = try projectRoute(for: projectID)
+        return try await Self.scanGitRepositories(
+            client: route.client,
+            root: try project(for: route).workspaceRoot
+        )
+    }
+
+    private static func scanGitRepositories(client: T3Client, root: String) async throws -> [String] {
+        try await NativeGitRepositoryScanner.scan(root: root) { path in
             try await client.browseFilesystem(partialPath: path).entries
         }
     }

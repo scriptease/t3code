@@ -40,17 +40,23 @@ public protocol FeatureClient: AnyObject {
         workspaceMode: FeatureWorkspaceMode,
         branch: String?,
         worktreePath: String?,
+        repositoryPath: String?,
         startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment],
         identity: FeatureSubmissionIdentity,
         context: OrchestrationMessageContext?
     ) async throws -> FeatureThread
+    /// `repositoryPath` targets a repository nested below the project folder instead of it.
     func listWorkspaceBranches(
         projectID: String,
+        repositoryPath: String?,
         refresh: Bool
     ) async throws -> [FeatureWorkspaceBranch]
     func selectWorkspaceBranch(
-        projectID: String, branch: FeatureWorkspaceBranch, mode: FeatureWorkspaceMode
+        projectID: String,
+        repositoryPath: String?,
+        branch: FeatureWorkspaceBranch,
+        mode: FeatureWorkspaceMode
     ) async throws -> FeatureWorkspaceBranch
     func renameThread(id: String, title: String) async throws
     func regenerateThreadTitle(id: String) async throws
@@ -233,6 +239,7 @@ public protocol FeatureClient: AnyObject {
     func setGitRepository(threadID: String, path: String?)
     /// Repositories nested below the project folder, for when it is not one itself.
     func gitRepositoryCandidates(threadID: String) async throws -> [String]
+    func gitRepositoryCandidates(projectID: String) async throws -> [String]
 
     func performSourceControlAction(threadID: String, request: FeatureSourceControlRequest) async throws
     func sourceControlBranches(threadID: String) async throws -> FeatureSourceControlBranches
@@ -491,13 +498,17 @@ public extension FeatureClient {
 
     func listWorkspaceBranches(
         projectID: String,
+        repositoryPath _: String?,
         refresh: Bool
     ) async throws -> [FeatureWorkspaceBranch] {
         []
     }
 
     func selectWorkspaceBranch(
-        projectID: String, branch: FeatureWorkspaceBranch, mode: FeatureWorkspaceMode
+        projectID: String,
+        repositoryPath _: String?,
+        branch: FeatureWorkspaceBranch,
+        mode: FeatureWorkspaceMode
     ) async throws -> FeatureWorkspaceBranch {
         try await NewTaskWorkspaceDefaults.selectBranch(branch, mode: mode) { _ in
             throw FeatureCapabilityUnavailable("Branch checkout")
@@ -589,6 +600,10 @@ public extension FeatureClient {
     func setGitRepository(threadID _: String, path _: String?) {}
 
     func gitRepositoryCandidates(threadID _: String) async throws -> [String] {
+        throw FeatureCapabilityUnavailable("Repository selection")
+    }
+
+    func gitRepositoryCandidates(projectID _: String) async throws -> [String] {
         throw FeatureCapabilityUnavailable("Repository selection")
     }
 

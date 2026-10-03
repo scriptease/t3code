@@ -73,6 +73,8 @@ public struct NewTaskRequest: Sendable, Equatable {
     public var workspaceMode: FeatureWorkspaceMode
     public var branch: String?
     public var worktreePath: String?
+    /// A repository nested below the project folder that git work targets instead of it.
+    public var repositoryPath: String?
     public var startFromOrigin: Bool
     public var attachments: [FeatureDraftAttachment]
 
@@ -85,6 +87,7 @@ public struct NewTaskRequest: Sendable, Equatable {
         workspaceMode: FeatureWorkspaceMode = .local,
         branch: String? = nil,
         worktreePath: String? = nil,
+        repositoryPath: String? = nil,
         startFromOrigin: Bool = true,
         attachments: [FeatureDraftAttachment] = [],
         context: OrchestrationMessageContext? = nil
@@ -97,6 +100,7 @@ public struct NewTaskRequest: Sendable, Equatable {
         self.workspaceMode = workspaceMode
         self.branch = Self.nonEmpty(branch)
         self.worktreePath = workspaceMode == .local ? Self.nonEmpty(worktreePath) : nil
+        self.repositoryPath = Self.nonEmpty(repositoryPath)
         self.startFromOrigin = workspaceMode == .worktree && startFromOrigin
         self.attachments = attachments
         self.context = context

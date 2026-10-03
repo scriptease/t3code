@@ -166,9 +166,8 @@ public struct FeatureSourceControlView: View {
         .sheet(isPresented: $isPickingRepository) {
             NavigationStack {
                 FeatureGitRepositoryPicker(
-                    client: client,
-                    threadID: threadID,
                     selection: repository,
+                    load: { try await client.gitRepositoryCandidates(threadID: threadID) },
                     onSelect: selectRepository
                 )
             }

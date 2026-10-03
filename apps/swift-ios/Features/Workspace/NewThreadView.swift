@@ -42,6 +42,9 @@ public struct NewThreadView: View {
     @State private var branchLoadFailed = false
     @State private var isSwitchingBranch = false
     @State private var branchSelectionError: String?
+    /// A repository nested below a project folder that is not one itself.
+    @State private var repository: String?
+    @State private var rootHasNoBranches = false
     @State private var activePicker: NewTaskPicker?
     @State private var isSubmitting = false
     @State private var submissionValidationError: String?
@@ -146,6 +149,16 @@ public struct NewThreadView: View {
                     },
                     onRefresh: { Task { await loadBranches(refresh: true) } }
                 )
+            case .repository:
+                NavigationStack {
+                    FeatureGitRepositoryPicker(
+                        selection: repository,
+                        load: { [projectID] in
+                            try await model.client.gitRepositoryCandidates(projectID: projectID)
+                        },
+                        onSelect: selectRepository
+                    )
+                }
             }
         }
         .interactiveDismissDisabled(isSubmitting || isRecoveringSubmission || isSwitchingBranch)
@@ -778,6 +791,24 @@ public struct NewThreadView: View {
                 .accessibilityLabel("Workspace")
                 .accessibilityValue(workspaceMode.title)
 
+                if repository != nil || rootHasNoBranches {
+                    Button {
+                        presentPicker(.repository)
+                    } label: {
+                        workspaceControlLabel(
+                            repository ?? "Select repository",
+                            systemImage: "chevron.left.forwardslash.chevron.right",
+                            showsChevron: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSubmitting || isSwitchingBranch)
+                    .accessibilityLabel("Repository")
+                    .accessibilityValue(repository ?? "Project folder")
+                }
+
+                // Without a repository there are no branches to choose from.
+                if repository != nil || !rootHasNoBranches {
                     Button {
                         presentPicker(.branch)
                     } label: {
@@ -792,6 +823,7 @@ public struct NewThreadView: View {
                     .disabled(isSubmitting || isSwitchingBranch)
                     .accessibilityLabel(workspaceMode == .local ? "Branch" : "Base branch")
                     .accessibilityValue(selectedBranch?.name ?? "Not selected")
+                }
 
                 if workspaceMode == .worktree {
                     Button {
@@ -1095,6 +1127,10 @@ public struct NewThreadView: View {
         ) {
             return attachmentError
         }
+        guard selectedProject?.isScratch == true || workspaceMode != .worktree
+            || repository != nil || !rootHasNoBranches else {
+            return "Select a repository."
+        }
         guard selectedProject?.isScratch == true || workspaceMode != .worktree || selectedBranch != nil else {
             if branchesLoading { return "Branches are loading." }
             return branchLoadFailed ? "Could not load branches." : "Choose a base branch."
@@ -1136,6 +1172,8 @@ public struct NewThreadView: View {
             if submissionValidationError == "Choose a base branch."
                 || submissionValidationError == "Could not load branches." {
                 presentPicker(.branch)
+            } else if submissionValidationError == "Select a repository." {
+                presentPicker(.repository)
             }
             return
         }
@@ -1158,12 +1196,14 @@ public struct NewThreadView: View {
             interactionMode: interactionMode,
             workspaceMode: project.isScratch == true ? .local : workspaceMode,
             branch: project.isScratch == true ? nil : selectedBranch?.name,
-            worktreePath: project.isScratch != true && workspaceMode == .local
+            // A nested repository's checkout is not a worktree of the project folder.
+            worktreePath: project.isScratch != true && workspaceMode == .local && repository == nil
                 ? NewTaskWorkspaceDefaults.normalizedWorktreePath(
                     for: selectedBranch,
                     projectPath: project.path
                 )
                 : nil,
+            repositoryPath: project.isScratch == true ? nil : repository,
             startFromOrigin: startFromOrigin,
             attachments: model.attachmentUploads.attachmentsForSend(
                 draftKey: draftKey ?? FeatureComposerDraftStore.newTaskKey(project: project),
@@ -1306,6 +1346,8 @@ public struct NewThreadView: View {
         branchesLoading = false
         needsInitialBranchCheckout = false
         branchSelectionError = nil
+        repository = nil
+        rootHasNoBranches = false
 
         guard let project = creationProjects.first(where: { $0.id == id }) else {
             selection = nil
@@ -1351,6 +1393,16 @@ public struct NewThreadView: View {
         )
     }
 
+    /// Branches, and a new worktree's base, follow the chosen repository.
+    private func selectRepository(_ path: String?) {
+        guard path != repository else { return }
+        repository = path
+        workspaceSelectionIsExplicit = true
+        branches = []
+        selectedBranch = nil
+        Task { await loadBranches() }
+    }
+
     private func setWorkspaceMode(_ mode: FeatureWorkspaceMode) {
         needsInitialBranchCheckout = false
         branchSelectionError = nil
@@ -1375,7 +1427,7 @@ public struct NewThreadView: View {
         defer { isSwitchingBranch = false }
         do {
             let selected = try await model.client.selectWorkspaceBranch(
-                projectID: requestedProjectID, branch: requestedBranch, mode: requestedMode
+                projectID: requestedProjectID, repositoryPath: repository, branch: requestedBranch, mode: requestedMode
             )
             guard projectID == requestedProjectID, workspaceMode == requestedMode else { return }
             missingFileRecoverySnapshot = nil
@@ -1406,6 +1458,7 @@ public struct NewThreadView: View {
             return
         }
         let requestedProjectID = projectID
+        let requestedRepository = repository
         guard !requestedProjectID.isEmpty else { return }
 
         branchesLoading = true
@@ -1413,10 +1466,15 @@ public struct NewThreadView: View {
         do {
             let loaded = try await model.workspaceBranches(
                 projectID: requestedProjectID,
+                repositoryPath: requestedRepository,
                 refresh: refresh
             )
-            guard !Task.isCancelled, projectID == requestedProjectID else { return }
+            guard !Task.isCancelled,
+                  projectID == requestedProjectID,
+                  repository == requestedRepository else { return }
             branches = loaded.sorted(by: Self.branchSort)
+            // An empty listing means the project folder is not a Git repository.
+            if requestedRepository == nil { rootHasNoBranches = loaded.isEmpty }
 
             selectedBranch = NewTaskLaunchPolicy.refreshedBranch(
                 selectedBranch, in: branches, mode: workspaceMode, isExplicit: workspaceSelectionIsExplicit
@@ -1815,6 +1873,7 @@ private enum NewTaskPicker: String, Identifiable {
     case projectSettings
     case project
     case branch
+    case repository
 
     var id: String { rawValue }
 }

@@ -1320,6 +1320,7 @@ private final class SwipeSettlementClientStub: FeatureClient {
         workspaceMode: FeatureWorkspaceMode,
         branch: String?,
         worktreePath: String?,
+        repositoryPath: String?,
         startFromOrigin: Bool,
         attachments: [FeatureUploadAttachment],
         identity: FeatureSubmissionIdentity,
