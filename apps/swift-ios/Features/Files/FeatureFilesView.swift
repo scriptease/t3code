@@ -92,50 +92,66 @@ private struct FeatureFileDirectoryView: View {
 
     var body: some View {
         let filteredEntries = self.filteredEntries
+        let repositoryShortcut = self.repositoryShortcut
         List {
-            if let errorMessage {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundStyle(T3Colors.warning)
-                    Text(errorMessage)
-                        .font(T3Typography.supporting)
-                        .foregroundStyle(T3Colors.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Retry") { Task { await load(refresh: true) } }
-                        .buttonStyle(.borderless)
-                        .disabled(isLoading)
+            if let repositoryShortcut {
+                Section("Current worktree") {
+                    NavigationLink {
+                        destination(for: repositoryShortcut)
+                    } label: {
+                        FeatureFileRow(entry: repositoryShortcut)
+                    }
                 }
             }
-            if isLoading {
-                Label(isSearching ? "Searching workspace…" : "Loading files…", systemImage: "folder")
-                    .font(T3Typography.supporting)
-                    .foregroundStyle(T3Colors.textSecondary)
+            Section {
+                if let errorMessage {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(T3Colors.warning)
+                        Text(errorMessage)
+                            .font(T3Typography.supporting)
+                            .foregroundStyle(T3Colors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Retry") { Task { await load(refresh: true) } }
+                            .buttonStyle(.borderless)
+                            .disabled(isLoading)
+                    }
+                }
+                if isLoading {
+                    Label(isSearching ? "Searching workspace…" : "Loading files…", systemImage: "folder")
+                        .font(T3Typography.supporting)
+                        .foregroundStyle(T3Colors.textSecondary)
+                        .listRowBackground(Color.clear)
+                } else if filteredEntries.isEmpty, errorMessage != nil {
+                    ContentUnavailableView(
+                        "Files unavailable",
+                        systemImage: "folder.badge.questionmark"
+                    )
                     .listRowBackground(Color.clear)
-            } else if filteredEntries.isEmpty, errorMessage != nil {
-                ContentUnavailableView(
-                    "Files unavailable",
-                    systemImage: "folder.badge.questionmark"
-                )
-                .listRowBackground(Color.clear)
-            }
-            if !isLoading, errorMessage == nil, filteredEntries.isEmpty {
-                ContentUnavailableView(
-                    isSearching ? "No matches" : "Empty folder",
-                    systemImage: "folder",
-                    description: Text(isSearching ? "Try another search." : "This folder has no visible files.")
-                )
-                .listRowBackground(Color.clear)
-            }
-            if isSearching, search.request == searchRequest, search.result?.isTruncated == true {
-                Label("More matches available. Refine your search.", systemImage: "line.3.horizontal.decrease")
-                    .font(T3Typography.supporting)
-                    .foregroundStyle(T3Colors.textSecondary)
-            }
-            ForEach(filteredEntries) { entry in
-                NavigationLink {
-                    destination(for: entry)
-                } label: {
-                    FeatureFileRow(entry: entry, showsPath: isSearching)
+                }
+                if !isLoading, errorMessage == nil, filteredEntries.isEmpty {
+                    ContentUnavailableView(
+                        isSearching ? "No matches" : "Empty folder",
+                        systemImage: "folder",
+                        description: Text(isSearching ? "Try another search." : "This folder has no visible files.")
+                    )
+                    .listRowBackground(Color.clear)
+                }
+                if isSearching, search.request == searchRequest, search.result?.isTruncated == true {
+                    Label("More matches available. Refine your search.", systemImage: "line.3.horizontal.decrease")
+                        .font(T3Typography.supporting)
+                        .foregroundStyle(T3Colors.textSecondary)
+                }
+                ForEach(filteredEntries) { entry in
+                    NavigationLink {
+                        destination(for: entry)
+                    } label: {
+                        FeatureFileRow(entry: entry, showsPath: isSearching)
+                    }
+                }
+            } header: {
+                if repositoryShortcut != nil {
+                    Text("Project folder")
                 }
             }
         }
@@ -187,6 +203,13 @@ private struct FeatureFileDirectoryView: View {
                 threadID: threadID, workspaceRoot: workspaceRoot, path: entry.path
             ))
         }
+    }
+
+    /// At the project folder, the thread's selected nested repository is offered on top.
+    private var repositoryShortcut: FeatureFileEntry? {
+        guard path == nil, searchText.isEmpty,
+              let repository = client.gitRepository(threadID: threadID) else { return nil }
+        return FeatureFileEntry(path: repository, name: repository, kind: .directory)
     }
 
     private var filteredEntries: [FeatureFileEntry] {
