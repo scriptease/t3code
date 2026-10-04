@@ -38,8 +38,8 @@ enum NewTaskLaunchPolicy {
         _ branch: FeatureWorkspaceBranch, projectPath: String
     ) -> FeatureWorkspaceBranch {
         var branch = branch
-        branch.isCurrent = false
         branch.worktreePath = NewTaskWorkspaceDefaults.normalizedWorktreePath(for: branch, projectPath: projectPath)
+        branch.isCurrent = false
         return branch
     }
 
