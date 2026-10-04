@@ -96,11 +96,15 @@ enum NewTaskWorkspaceDefaults {
         return URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
+    /// The worktree a new thread should run in, or nil for the project folder itself.
+    /// The checked-out branch is always the project's own checkout. With a separate
+    /// Git directory, `git worktree list` reports that directory as its worktree.
     static func normalizedWorktreePath(
         for branch: FeatureWorkspaceBranch?,
         projectPath: String
     ) -> String? {
-        guard let path = branch?.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard branch?.isCurrent != true,
+              let path = branch?.worktreePath?.trimmingCharacters(in: .whitespacesAndNewlines),
               !path.isEmpty else { return nil }
         // Forward-slash UNC paths are ambiguous without a Windows root in either input.
         // Preserve POSIX case sensitivity unless a drive or backslash UNC path establishes it.

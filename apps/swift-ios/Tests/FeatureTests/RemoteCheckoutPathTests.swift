@@ -18,6 +18,22 @@ struct RemoteCheckoutPathTests {
         #expect(NewTaskWorkspaceDefaults.normalizedWorktreePath(for: branch, projectPath: project) == nil)
     }
 
+    @Test func separateGitDirectoryKeepsTheProjectFolder() {
+        let branch = FeatureWorkspaceBranch(
+            name: "main",
+            isCurrent: true,
+            worktreePath: "/Users/me/.obsidian/git/v1"
+        )
+        #expect(NewTaskWorkspaceDefaults.normalizedWorktreePath(
+            for: branch,
+            projectPath: "/Users/me/obsidian/V1"
+        ) == nil)
+        #expect(NewTaskLaunchPolicy.seededBranchForCheckout(
+            branch,
+            projectPath: "/Users/me/obsidian/V1"
+        ).worktreePath == nil)
+    }
+
     @Test(arguments: [
         ("/srv/linked/../repo", "/srv/repo"),
         (#"C:\linked\..\repo"#, "c:/repo"),
