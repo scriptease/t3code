@@ -22,6 +22,9 @@ extension View {
             onPaletteQueryChange: onPaletteQueryChange,
             onCommand: onCommand
         )
+        // The hosted controller avoids the keyboard itself. Avoiding it here
+        // too leaves off-screen columns sized for a keyboard that has hidden.
+        .ignoresSafeArea(.keyboard)
     }
 }
 
