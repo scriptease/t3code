@@ -127,6 +127,8 @@ struct FeatureComposerView: View {
     private let onInteractionModeChange: ((FeatureInteractionMode) -> Void)?
     private let isSending: Bool
     private let isSendEnabled: Bool
+    private let sendBlockDetail: String?
+    @State private var showsSendBlockReason = false
     private let composerEnterBehavior: FeatureComposerEnterBehavior
     private let retainedAttachmentCount: Int
     private let submitLabel: String?
@@ -195,6 +197,7 @@ struct FeatureComposerView: View {
         interactionMode: FeatureInteractionMode = .standard,
         onInteractionModeChange: ((FeatureInteractionMode) -> Void)? = nil,
         isSendEnabled: Bool = true,
+        sendBlockDetail: String? = nil,
         composerEnterBehavior: FeatureComposerEnterBehavior = .send,
         retainedAttachmentCount: Int = 0,
         submitLabel: String? = nil,
@@ -228,6 +231,7 @@ struct FeatureComposerView: View {
         self.onInteractionModeChange = onInteractionModeChange
         self.isSending = isSending
         self.isSendEnabled = isSendEnabled
+        self.sendBlockDetail = sendBlockDetail
         self.composerEnterBehavior = composerEnterBehavior
         self.retainedAttachmentCount = max(0, retainedAttachmentCount)
         self.submitLabel = submitLabel
@@ -257,6 +261,12 @@ struct FeatureComposerView: View {
 
     var body: some View {
         composerSurface
+            .task(id: sendBlockReason) {
+                showsSendBlockReason = false
+                guard sendBlockReason != nil else { return }
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled { showsSendBlockReason = true }
+            }
             .overlay(alignment: .top) {
                 if showsCommandMenu, let trigger = composerTrigger {
                     // Offset by the menu's deterministic height so it sits
@@ -595,6 +605,16 @@ struct FeatureComposerView: View {
 
             if voiceInputController.phase == .error {
                 voiceInputError
+            }
+
+            if showsSendBlockReason, let sendBlockReason {
+                Text("Send blocked: \(sendBlockReason)")
+                    .font(T3Typography.supporting)
+                    .foregroundStyle(T3Colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 15)
+                    .padding(.bottom, 4)
+                    .textSelection(.enabled)
             }
 
             composerFooter
@@ -975,6 +995,21 @@ struct FeatureComposerView: View {
 
     private var submitDisabled: Bool {
         isSending || (!showsStop && !canSend)
+    }
+
+    /// LOCAL diagnostic: names the flags that keep the send button disabled.
+    private var sendBlockReason: String? {
+        guard submitDisabled, !showsStop, !isWorking, !textIsEmpty else { return nil }
+        var reasons: [String] = []
+        if let sendBlockDetail { reasons.append(sendBlockDetail) }
+        if isSending { reasons.append("isSending") }
+        if !isSendEnabled { reasons.append("!isSendEnabled") }
+        if modelSelectionBlocker != nil { reasons.append("modelSelection") }
+        if composerTrigger?.kind == .model { reasons.append("modelTrigger") }
+        if attachmentPreparation.isPreparing { reasons.append("preparingAttachments") }
+        if attachmentBlocker != nil { reasons.append("attachmentBlocker") }
+        if uploadStatus.blocksSend { reasons.append("uploads") }
+        return reasons.isEmpty ? "unknown" : reasons.joined(separator: ", ")
     }
 
     private var textIsEmpty: Bool {

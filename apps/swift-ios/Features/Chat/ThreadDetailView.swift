@@ -1507,6 +1507,7 @@ public struct ThreadDetailView: View {
                         interactionMode: effectiveInteractionMode,
                         onInteractionModeChange: queuedEdit == nil ? { draftInteractionMode = $0 } : nil,
                         isSendEnabled: canSubmitComposer,
+                        sendBlockDetail: sendBlockDetail,
                         composerEnterBehavior: model.snapshot.settings.composerEnterBehavior,
                         retainedAttachmentCount: queuedEdit?.existingAttachments.count ?? 0,
                         submitLabel: queuedEdit == nil ? nil : "Save message",
@@ -2072,6 +2073,19 @@ public struct ThreadDetailView: View {
         guard queueControlsAvailable, edit.validationMessage == nil,
               let execution = detail?.execution else { return false }
         return edit.isStillQueued(in: execution)
+    }
+
+    /// LOCAL diagnostic: thread-screen flags that disable sending.
+    private var sendBlockDetail: String? {
+        let flags: [(Bool, String)] = [
+            (!didRestoreDraft, "!didRestoreDraft"), (!didRestoreQueuedEdit, "!didRestoreQueuedEdit"),
+            (queuedEdit != nil, "queuedEdit"), (isSending, "threadSending"),
+            (isPreparingRewind, "preparingRewind"), (model.rewindingThreadIDs.contains(thread.id), "modelRewinding"),
+            (isUpdatingQueue, "updatingQueue"), (isTransferringDraft, "transferringDraft"),
+            (threadConnectionState != .connected, "notConnected"),
+        ]
+        let active = flags.filter(\.0).map(\.1)
+        return active.isEmpty ? nil : active.joined(separator: ", ")
     }
 
     private var currentQueuedEdit: FeatureQueuedRunEdit? {
